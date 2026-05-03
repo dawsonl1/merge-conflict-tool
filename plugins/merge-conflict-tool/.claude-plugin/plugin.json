@@ -1,0 +1,6 @@
+{
+  "name": "merge-conflict-tool",
+  "version": "1.0.0",
+  "description": "Carefully resolve git merge, rebase, or cherry-pick conflicts using paired defender subagents to prevent bias toward 'ours'. Auto-invokes on git CONFLICT or halted merge state. Includes scope tiering, integration-overlap detection, mandatory frontend visual verification, and pre-existing debt disambiguation.",
+  "hooks": "./hooks/hooks.json"
+}

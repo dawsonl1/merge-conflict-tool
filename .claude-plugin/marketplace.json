@@ -1,0 +1,24 @@
+{
+  "name": "dawson-plugins",
+  "owner": {
+    "name": "Dawson Pitcher",
+    "email": "dawsonlpitcher@gmail.com"
+  },
+  "description": "Claude Code plugins by Dawson Pitcher.",
+  "plugins": [
+    {
+      "name": "merge-conflict-tool",
+      "source": "./plugins/merge-conflict-tool",
+      "description": "Carefully resolve git merge, rebase, or cherry-pick conflicts using paired defender subagents to prevent bias toward 'ours'. Auto-invokes on git CONFLICT or halted merge state. Includes scope tiering, integration-overlap detection, mandatory frontend visual verification, and pre-existing debt disambiguation.",
+      "homepage": "https://github.com/dawsonl1/merge-conflict-tool",
+      "repository": "https://github.com/dawsonl1/merge-conflict-tool",
+      "license": "MIT",
+      "category": "version-control",
+      "keywords": ["git", "merge", "conflict", "rebase", "cherry-pick", "subagents"],
+      "author": {
+        "name": "Dawson Pitcher",
+        "email": "dawsonlpitcher@gmail.com"
+      }
+    }
+  ]
+}
