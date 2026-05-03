@@ -5,7 +5,8 @@ A Claude Code plugin for careful git merge conflict resolution. Auto-invokes whe
 ## Install
 
 ```bash
-claude plugin install merge-conflict-tool@<marketplace-name>
+/plugin marketplace add dawsonl1/merge-conflict-tool
+/plugin install merge-conflict-tool@dawson-plugins
 ```
 
 Hooks auto-activate on install. No `settings.json` changes required.
@@ -25,12 +26,12 @@ When you run `git merge` (or `rebase`, `cherry-pick`) and hit a conflict, Claude
 
 - **Tier 3 merges** (>25 files, >3mo divergence, severely asymmetric)
 - **Modify/delete (`UD`/`DU`) conflicts**
-- **Squashed migrations** (`replaces = [...]`)
-- **Data migrations in conflict** (`RunPython`/`RunSQL`)
+- **Squashed / collapsed migrations** (e.g. Django's `replaces = [...]`, Alembic merge revisions)
+- **Data migrations in conflict** (any migration that runs code or SQL against existing rows)
 - **Genuine incompatible-design conflicts**
 
 For these, the skill surfaces what it found and asks for direction. Don't apply the workflow blindly to scenarios it wasn't tuned for.
 
 ## Customize
 
-The skill's project-specific section (Step 7 in `skills/merge-conflict-tool/SKILL.md`) covers Python/Django and JavaScript/Node patterns. Adapt for your stack — the bias-prevention defender-pair pattern (Step 4) is language-agnostic.
+The skill is stack-agnostic — Step 7 in `skills/merge-conflict-tool/SKILL.md` covers conflict patterns by category (lockfiles, dependency manifests, generated artifacts, migrations, config/build files, routing tables, UI files) with examples drawn from many ecosystems. The bias-prevention defender-pair pattern (Step 4) is fully language-agnostic. Tier thresholds and the risky-surface list are heuristics worth tuning for your team.

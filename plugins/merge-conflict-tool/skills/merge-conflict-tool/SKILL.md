@@ -75,7 +75,7 @@ Group conflicts by status code:
 | `UD` / `DU` | modify/delete | **Stop and ask** — semantic disagreement |
 | `AU` / `UA` | one added, the other treats as modified | Rare — investigate |
 
-Note any **frontend files** in the conflict set — they get extra care regardless of size (Step 3). Frontend = `*.tsx`, `*.jsx`, `*.ts`/`*.js` under UI dirs, `*.css`/`*.scss`, `*.html`, route definitions, build/theme config, Storybook stories.
+Note any **frontend files** in the conflict set — they get extra care regardless of size (Step 3). Frontend = any file whose output renders to a screen and whose breakage is hard to catch with typecheck or unit tests: web component files (`*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.astro`), `*.ts`/`*.js` under UI directories, `*.css`/`*.scss`, `*.html`, mobile UI (SwiftUI views, Jetpack Compose `*.kt`, Flutter `*.dart`), desktop UI (XAML, QML), route definitions, build/theme config, and component-catalog files (Storybook, Histoire).
 
 ## Step 2 — Tier and cluster
 
@@ -215,38 +215,75 @@ Only after the Step 3 four-slot justification was posted. Common cases: union of
 
 If a "mechanical" conflict reveals hidden semantics during edit (imports shadowing each other, conflicting dict keys), promote to complex and dispatch a pair.
 
-## Step 7 — Project-specific patterns
+## Step 7 — Common conflict patterns
 
-Detect repo type from root files; adapt the language-specific commands to your stack.
+These categories recur across every stack. Match the file's category, then apply the pattern. Specific commands differ per ecosystem; the resolution *shape* doesn't.
 
-### Python / Django (`manage.py` present)
+### Lockfiles — never hand-merge
 
-- **Migration AA on `*/migrations/0XXX_*.py`** (Scenario A — both sides created `0042_*.py` with non-overlapping models): rename incoming side's migration to come *after* the current side's; update its `dependencies = [(...)]` to point at the latest current-side migration; verify with `python manage.py makemigrations --check`.
-- **Model UU + migration AA** (Scenario B — both sides edited the same model AND each generated a migration): the migrations are downstream of incompatible model states. Resolve `models.py` UU via defender pair, then `git rm` BOTH new migrations, run `makemigrations` against merged model state to produce ONE coherent migration, read manually before committing.
-- **Data migration in conflict** (Scenario C — `RunPython` / `RunSQL` migration where both sides created or modified one): always defender-pair. Check whether the migration uses `apps.get_model('app', 'Model')` (historical pattern, safe under reordering) or raw `from app.models import Model` (current-state import, fragile). Run `python manage.py migrate --plan` and read it. **Halt and ask if uncertain — data migrations break behavior silently.**
-- **Squashed migrations** (Scenario D — `replaces = [...]` on either side): **HALT and ask the user.** The replaces machinery doesn't autonomously merge with manually-renumbered conflicts.
-- **Cross-app dependency rename** (Scenario E): after any renumbering walk every app's migrations folder (`grep -rn "<old-migration-name>" */migrations/`). Cross-app dependencies break silently — `--check` won't fail; `migrate` will.
-- **`requirements.txt` / `requirements-dev.txt`**: union the package list; same package, different pins → take the higher unless one is known-broken.
-- **`settings.py`**: always defender pair (settings encode intent — silent drops cause runtime errors).
+Examples: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `poetry.lock`, `Pipfile.lock`, `Gemfile.lock`, `go.sum`, `composer.lock`, `mix.lock`, `pubspec.lock`.
 
-### JavaScript / Node (`package.json` present)
+```bash
+git checkout --theirs <lockfile>
+<package-manager> install     # regenerate from merged manifest
+git add <lockfile>
+```
 
-- **Hook discipline**: when synthesizing TSX/JSX with React hooks, verify hook **call order is preserved** (rules of hooks); `useEffect`/`useMemo`/`useCallback` **dependency arrays** still match captured closures.
-- **Class/style merging**: no contradictory Tailwind utilities (`flex` and `block` together); no CSS-specificity wars; theme tokens still resolve.
-- **A11y preservation**: keyboard handlers (`onKeyDown`), ARIA attrs (`aria-*`, `role`), focus management (`tabIndex`, `autoFocus`, refs), alt text, semantic HTML.
-- **Prop contracts**: if a component's prop signature changed, find importers (`grep -rl "from.*<Component>" src/`) and verify TypeScript catches all consumers; runtime-only contracts (default props, render-prop shapes) won't be caught.
-- **Route / navigation**: if route definitions changed, manually trace each route after merge.
-- **`package.json`**: union dependencies, take higher pins.
-- **`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`**: do NOT hand-merge. `git checkout --theirs <lock>` and run `npm install` / `yarn install` / `pnpm install` to regenerate from merged `package.json`. (One legitimate use of `--theirs`.)
-- **`tsconfig.json` / build config**: always defender pair.
+This is the one legitimate use of `--theirs` on a content conflict — the lockfile is derived from the manifest, so any textual merge is wrong by construction.
 
-### Other languages
+### Dependency manifests
 
-The patterns generalize: lockfiles regenerate, build configs need defender-pair scrutiny, tests should run against the merged state. Adapt the commands to your stack.
+Examples: `package.json`, `requirements.txt`, `pyproject.toml`, `Cargo.toml`, `Gemfile`, `go.mod`, `pom.xml`, `build.gradle`, `composer.json`, `mix.exs`, `pubspec.yaml`.
 
-### Generated artifacts (any repo)
+- Union the dependency list — both sides' additions appear.
+- Same package, different pins → take the higher unless one is known-broken.
+- Same package, incompatible major versions → defender pair (often signals one side adopted a new API surface).
 
-Auto-generated migrations, OpenAPI specs, type stubs, GraphQL schemas: regenerate after merging the source-of-truth files. Do not hand-merge generated output.
+### Generated / derived artifacts
+
+Examples: OpenAPI specs, GraphQL schema files, type stubs (`.d.ts`, generated `.pyi`), protobuf-generated code, ORM-derived schemas, Storybook outputs, static site exports, CSS-in-JS extracted bundles, Terraform plan outputs.
+
+Never hand-merge. Resolve the source-of-truth files first, then regenerate the derivative against the merged source. If both sides regenerated separately, both regenerations are stale — discard them and regenerate fresh.
+
+### Migrations (any framework with sequential or timestamped migrations)
+
+Applies to Django, Rails ActiveRecord, Alembic, Flyway, Phoenix Ecto, golang-migrate, sqlx, Knex, Diesel, Liquibase, dbmate, etc. Four failure modes:
+
+- **A. Both sides created independent migrations** (non-overlapping changes that just collided on numbering): rename incoming to come after current; update its `dependencies` / `down_revision` / parent pointer to the latest current-side migration; verify with the framework's consistency check (e.g. `makemigrations --check`, `db:migrate:status`, `alembic check`).
+
+- **B. Both sides edited the same source state AND each generated a migration** (e.g. both edited the same model and ran the migration generator): the migrations are downstream of incompatible source state. Resolve the source UU via defender pair, then `git rm` BOTH new migrations and regenerate ONE coherent migration from the merged source. Read it manually before committing.
+
+- **C. Data migration in conflict** (any migration that runs code/SQL against existing rows, not just schema DDL): always defender-pair. Check whether it uses a historical/snapshot pattern (safe under reordering) or a current-state import (fragile). Run `migrate --plan` (or framework equivalent) and read it. **Halt and ask if uncertain — data migrations break behavior silently.**
+
+- **D. Squashed / collapsed migrations** (e.g. Django's `replaces = [...]`, Rails schema dumps, Alembic merge revisions): **HALT and ask the user.** Squashing doesn't autonomously merge with manually-renumbered conflicts.
+
+After any renumbering, search the whole repo for references to old migration names — cross-module dependencies break silently and won't fail the framework's own consistency check.
+
+### Configuration & build files
+
+Examples: `tsconfig.json`, `webpack.config.*` / `vite.config.*` / `next.config.*`, `pyproject.toml`, `pom.xml` / `build.gradle`, `Makefile` / `justfile`, `Dockerfile` / `docker-compose.yml`, `.github/workflows/*.yml`, application settings (`settings.py`, `application.yml`, `appsettings.json`, `.env.example`), Terraform / Pulumi / CDK config.
+
+**Always defender pair.** Config encodes intent; silent drops cause runtime errors that don't surface until deploy or first request.
+
+### Routing / dispatch tables
+
+Examples: `urls.py`, `routes.rb`, Next.js `app/` or `pages/`, React Router config, Express route registration, Flask / FastAPI router includes, Phoenix `router.ex`, gRPC service definitions, GraphQL resolver maps.
+
+If route definitions changed on either side, manually trace each route after merge — both sides may have added routes the other isn't aware of, and middleware/guard ordering can shift behavior silently.
+
+### UI / frontend files (any framework)
+
+The frontend extra-care from earlier steps applies regardless of framework. Concretely:
+
+- **Component / hook / effect ordering**: React's rules-of-hooks, Vue's `setup()` order, Svelte's reactive declarations, SwiftUI's `@State`/`@Binding` and Compose `remember*` declarations. Order matters and often isn't caught at build time.
+- **Reactive dependency arrays / captures**: `useEffect`/`useMemo`/`useCallback` deps in React, `watch`/`watchEffect` in Vue, `$:` in Svelte 4 / `$effect` in Svelte 5 — must still match captured closures after merge.
+- **Class / style collisions**: utility-class systems (Tailwind, UnoCSS, Tachyons) can produce contradictory utilities (`flex` + `block`); CSS-in-JS theme tokens still need to resolve; specificity wars.
+- **A11y attributes**: keyboard handlers, ARIA roles/states, focus management, alt text, semantic elements — all silent if dropped.
+- **Component / prop API contracts**: if a component's signature changed, find consumers; static type checkers catch typed consumers, but runtime contracts (default props, render-prop shapes, slot patterns, dynamic component props) won't be.
+
+### When you don't recognize the pattern
+
+Default to defender pair. Cost of an unnecessary pair is minutes; cost of a missed semantic conflict is silent breakage in production.
 
 ## Step 8 — Verify (do not skip this)
 
@@ -254,22 +291,19 @@ For Tier 2/3 with cluster-level checkpoints, run verification per cluster before
 
 ### 8a. Static verification (touched files only)
 
-- Python: `python -m py_compile <file>` per touched `.py`
-- TypeScript: `tsc --noEmit -p <tsconfig>` (project-scoped, not whole monorepo)
-- Linter on touched files only — never the whole repo (slow, dilutes signal)
+- Run your language's static checker on touched files only — e.g. Python `python -m py_compile <file>`, TypeScript `tsc --noEmit -p <tsconfig>` (project-scoped, not whole monorepo), Rust `cargo check`, Go `go build ./...` / `go vet`, Swift `swiftc -parse`, .NET `dotnet build --no-restore`.
+- Linter on touched files only — never the whole repo (slow, dilutes signal).
 
 ### 8b. Targeted tests
 
-Find tests that exercise the conflicted modules:
-- Python: `grep -rl "from <module>\|import <module>" tests/`
-- JS/TS: `grep -rl "from .*<module>" __tests__/ src/**/*.test.* src/**/*.spec.*`
+Find tests that exercise the conflicted modules — grep test directories for imports of those modules using your language's import syntax (e.g. Python `grep -rl "from <module>\|import <module>" tests/`, JS/TS `grep -rl "from .*<module>"` over test directories, Go `_test.go` files referencing the package, Ruby `spec/` files requiring it).
 
 Run those. **Do NOT run the full suite by default** — slow, dilutes signal, makes you tolerant of unrelated failures. Targeted tests fail loudly when *your* resolution is wrong.
 
 ### 8c. Migration check (if migrations were touched)
 
-- `python manage.py makemigrations --check` — must report "no changes needed." If it reports changes, you're in Scenario B (Step 7) — regenerate, don't paper over.
-- `python manage.py migrate --plan` — review forward plan for ordering surprises, especially around data migrations.
+- Run your framework's "are migrations consistent?" check (e.g. Django `makemigrations --check`, Alembic `check`, Rails `db:migrate:status`, Knex `migrate:status`) — must report no pending changes. If it does, you're in Scenario B (Step 7) — regenerate, don't paper over.
+- Run the framework's `migrate --plan` equivalent — review forward plan for ordering surprises, especially around data migrations.
 
 ### 8d. Build (frontend changes)
 

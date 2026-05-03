@@ -52,7 +52,7 @@ The bias-prevention defender-pair pattern (Step 4 in the skill) is the load-bear
 
 ## Customize
 
-The skill's project-specific section (Step 7 in [`plugins/merge-conflict-tool/skills/merge-conflict-tool/SKILL.md`](plugins/merge-conflict-tool/skills/merge-conflict-tool/SKILL.md)) covers Python/Django and JavaScript/Node patterns. Adapt for your stack — the bias-prevention defender-pair pattern is language-agnostic. Tier thresholds, the risky-surface list, and verification commands are heuristics worth tuning for your team's merge cadence and sensitive areas.
+The skill is stack-agnostic out of the box — Step 7 in [`SKILL.md`](plugins/merge-conflict-tool/skills/merge-conflict-tool/SKILL.md) covers conflict patterns by category (lockfiles, dependency manifests, generated artifacts, migrations, config/build files, routing tables, UI files) with examples drawn from many ecosystems. The few heuristics worth tuning for your team are tier thresholds, the risky-surface list, and the verification command specifics in Step 8.
 
 ## Layout
 
